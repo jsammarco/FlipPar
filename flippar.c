@@ -64,6 +64,7 @@ typedef struct {
     uint8_t selected_row;
     uint8_t selected_col;
     uint8_t scroll_hole_offset;
+    uint8_t scroll_row_offset;
 
     char text_input_buffer[FLIPPAR_NAME_LEN];
     uint8_t editing_player_index;
@@ -126,6 +127,7 @@ static void flippar_init_data(FlipParApp* app) {
     app->selected_row = 1;
     app->selected_col = 0;
     app->scroll_hole_offset = 0;
+    app->scroll_row_offset = 0;
     app->editing_player_index = 0;
     memset(app->text_input_buffer, 0, sizeof(app->text_input_buffer));
     app->running = true;
@@ -177,6 +179,50 @@ static bool flippar_write_text(File* file, const char* text) {
     return storage_file_write(file, text, len) == len;
 }
 
+static bool flippar_write_char_repeat(File* file, char ch, size_t count) {
+    char buffer[32];
+    if(count >= sizeof(buffer)) return false;
+
+    for(size_t i = 0; i < count; i++) {
+        buffer[i] = ch;
+    }
+    buffer[count] = '\0';
+
+    return flippar_write_text(file, buffer);
+}
+
+static bool flippar_write_score_card_separator(File* file, uint8_t players) {
+    static const uint8_t column_widths[] = {4, 3, 10, 10, 10, 10};
+
+    if(!flippar_write_text(file, "+")) return false;
+    for(uint8_t column = 0; column < players + 2; column++) {
+        if(!flippar_write_char_repeat(file, '-', column_widths[column] + 2)) return false;
+        if(!flippar_write_text(file, "+")) return false;
+    }
+
+    return flippar_write_text(file, "\r\n");
+}
+
+static bool flippar_write_score_card_cell(
+    File* file,
+    const char* text,
+    size_t width,
+    bool left_align) {
+    char format[16];
+    char buffer[32];
+
+    snprintf(format, sizeof(format), left_align ? " %%-%us |" : " %%%us |", (unsigned)width);
+    snprintf(buffer, sizeof(buffer), format, text);
+
+    return flippar_write_text(file, buffer);
+}
+
+static bool flippar_write_score_card_number(File* file, int16_t value, size_t width) {
+    char buffer[16];
+    snprintf(buffer, sizeof(buffer), "%d", value);
+    return flippar_write_score_card_cell(file, buffer, width, false);
+}
+
 static bool flippar_build_save_path(Storage* storage, char* path, size_t path_size) {
     DateTime datetime = {0};
     furi_hal_rtc_get_datetime(&datetime);
@@ -215,6 +261,7 @@ static bool flippar_save_score_sheet(FlipParApp* app) {
     bool success = false;
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);
+    static const uint8_t column_widths[] = {4, 3, 10, 10, 10, 10};
 
     if(!storage_simply_mkdir(storage, FLIPPAR_SAVE_DIR)) {
         goto cleanup;
@@ -241,32 +288,42 @@ static bool flippar_save_score_sheet(FlipParApp* app) {
     snprintf(line, sizeof(line), "Par Total:\t%d\r\n\r\n", par_total);
     if(!flippar_write_text(file, line)) goto close_file;
 
-    if(!flippar_write_text(file, "Hole\tPar")) goto close_file;
+    if(!flippar_write_score_card_separator(file, app->players)) goto close_file;
+    if(!flippar_write_text(file, "|")) goto close_file;
+    if(!flippar_write_score_card_cell(file, "Hole", column_widths[0], true)) goto close_file;
+    if(!flippar_write_score_card_cell(file, "Par", column_widths[1], true)) goto close_file;
     for(uint8_t p = 0; p < app->players; p++) {
-        snprintf(line, sizeof(line), "\t%s", app->player_names[p]);
-        if(!flippar_write_text(file, line)) goto close_file;
+        if(!flippar_write_score_card_cell(file, app->player_names[p], column_widths[p + 2], true)) {
+            goto close_file;
+        }
     }
     if(!flippar_write_text(file, "\r\n")) goto close_file;
+    if(!flippar_write_score_card_separator(file, app->players)) goto close_file;
 
     for(uint8_t h = 0; h < app->holes; h++) {
-        snprintf(line, sizeof(line), "%u\t%u", h + 1, app->pars[h]);
-        if(!flippar_write_text(file, line)) goto close_file;
-
+        if(!flippar_write_text(file, "|")) goto close_file;
+        if(!flippar_write_score_card_number(file, h + 1, column_widths[0])) goto close_file;
+        if(!flippar_write_score_card_number(file, app->pars[h], column_widths[1])) goto close_file;
         for(uint8_t p = 0; p < app->players; p++) {
-            snprintf(line, sizeof(line), "\t%u", app->scores[p][h]);
-            if(!flippar_write_text(file, line)) goto close_file;
+            if(!flippar_write_score_card_number(file, app->scores[p][h], column_widths[p + 2])) {
+                goto close_file;
+            }
         }
         if(!flippar_write_text(file, "\r\n")) goto close_file;
+        if(!flippar_write_score_card_separator(file, app->players)) goto close_file;
     }
 
-    if(!flippar_write_text(file, "Total\t")) goto close_file;
-    snprintf(line, sizeof(line), "%d", par_total);
-    if(!flippar_write_text(file, line)) goto close_file;
+    if(!flippar_write_text(file, "|")) goto close_file;
+    if(!flippar_write_score_card_cell(file, "Total", column_widths[0], true)) goto close_file;
+    if(!flippar_write_score_card_number(file, par_total, column_widths[1])) goto close_file;
     for(uint8_t p = 0; p < app->players; p++) {
-        snprintf(line, sizeof(line), "\t%d", flippar_total_for_player(app, p));
-        if(!flippar_write_text(file, line)) goto close_file;
+        if(!flippar_write_score_card_number(
+               file, flippar_total_for_player(app, p), column_widths[p + 2])) {
+            goto close_file;
+        }
     }
     if(!flippar_write_text(file, "\r\n")) goto close_file;
+    if(!flippar_write_score_card_separator(file, app->players)) goto close_file;
 
     if(!storage_file_sync(file)) goto close_file;
     success = true;
@@ -369,6 +426,18 @@ static void flippar_draw_splash(Canvas* canvas) {
     canvas_draw_icon(canvas, 0, 0, &I_flippar_splash_128x64);
 }
 
+static void flippar_draw_scroll_arrow(Canvas* canvas, uint8_t x, uint8_t y, bool up) {
+    if(up) {
+        canvas_draw_line(canvas, x, y + 3, x + 2, y + 1);
+        canvas_draw_line(canvas, x + 2, y + 1, x + 4, y + 3);
+        canvas_draw_line(canvas, x + 2, y + 1, x + 2, y + 5);
+    } else {
+        canvas_draw_line(canvas, x, y + 1, x + 2, y + 3);
+        canvas_draw_line(canvas, x + 2, y + 3, x + 4, y + 1);
+        canvas_draw_line(canvas, x + 2, y + 3, x + 2, y - 1);
+    }
+}
+
 static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
     canvas_clear(canvas);
     canvas_set_font(canvas, FontPrimary);
@@ -391,11 +460,17 @@ static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
     }
 
     const uint8_t visible_cols = 4;
+    const uint8_t visible_rows = 4;
     const uint8_t total_col = app->holes;
     const uint8_t total_columns = app->holes + 1;
+    const uint8_t total_rows = app->players + 1;
     uint8_t max_scroll_offset = 0;
+    uint8_t max_row_scroll_offset = 0;
     if(total_columns > visible_cols) {
         max_scroll_offset = total_columns - visible_cols;
+    }
+    if(total_rows > visible_rows) {
+        max_row_scroll_offset = total_rows - visible_rows;
     }
 
     if(app->selected_col < app->scroll_hole_offset) {
@@ -411,10 +486,20 @@ static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
         app->scroll_hole_offset = max_scroll_offset;
     }
 
+    if(app->selected_row < app->scroll_row_offset) {
+        app->scroll_row_offset = app->selected_row;
+    }
+    if(app->selected_row >= app->scroll_row_offset + visible_rows) {
+        app->scroll_row_offset = app->selected_row - visible_rows + 1;
+    }
+    if(app->scroll_row_offset > max_row_scroll_offset) {
+        app->scroll_row_offset = max_row_scroll_offset;
+    }
+
     const uint8_t start_x = 2;
-    const uint8_t start_y = 16;
+    const uint8_t start_y = 14;
     const uint8_t col_w = 24;
-    const uint8_t row_h = 10;
+    const uint8_t row_h = 9;
 
     char par_total_label[8];
     snprintf(par_total_label, sizeof(par_total_label), "%d", par_total);
@@ -433,8 +518,11 @@ static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
         canvas_draw_str(canvas, start_x + 22 + (i * col_w), start_y + 8, header_label);
     }
 
-    for(uint8_t row = 0; row < app->players + 1; row++) {
-        uint8_t y = start_y + 12 + (row * row_h);
+    for(uint8_t i = 0; i < visible_rows; i++) {
+        uint8_t row = app->scroll_row_offset + i;
+        uint8_t y = start_y + 12 + (i * row_h);
+
+        if(row >= total_rows) break;
 
         if(row == 0) {
             canvas_draw_str(canvas, start_x, y + 8, "Par");
@@ -463,11 +551,18 @@ static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
             bool selected = (col < app->holes) && (app->selected_row == row) &&
                             (app->selected_col == col);
             if(selected) {
-                canvas_draw_frame(canvas, x - 2, y, 16, 10);
+                canvas_draw_frame(canvas, x - 2, y, 16, 9);
             }
 
             canvas_draw_str(canvas, x + 2, y + 8, value);
         }
+    }
+
+    if(app->scroll_row_offset > 0) {
+        flippar_draw_scroll_arrow(canvas, 122, 14, true);
+    }
+    if(app->scroll_row_offset < max_row_scroll_offset) {
+        flippar_draw_scroll_arrow(canvas, 122, 60, false);
     }
 }
 
@@ -593,6 +688,8 @@ static bool flippar_main_view_input(InputEvent* event, void* context) {
                 app->screen = FlipParScreenGrid;
                 app->selected_row = 1;
                 app->selected_col = 0;
+                app->scroll_row_offset = 0;
+                app->scroll_hole_offset = 0;
             } else if(app->setup_field == FlipParFieldSave) {
                 flippar_save_score_sheet(app);
             }
