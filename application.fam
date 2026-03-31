@@ -1,0 +1,7 @@
+App(
+    appid="flippar",
+    name="FlipPar",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="flippar_app",
+    stack_size=4096,
+)
