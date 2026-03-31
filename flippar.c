@@ -5,6 +5,7 @@
 #include <gui/modules/text_input.h>
 #include <input/input.h>
 #include <storage/storage.h>
+#include <furi_hal_rtc.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -14,7 +15,7 @@
 #define FLIPPAR_MAX_HOLES 27
 #define FLIPPAR_NAME_LEN 32
 #define FLIPPAR_SAVE_DIR "/ext/apps_data/flippar"
-#define FLIPPAR_SAVE_BASENAME "scorecard"
+#define FLIPPAR_SAVE_BASENAME "FlipPar"
 
 typedef enum {
     FlipParScreenSplash,
@@ -176,6 +177,40 @@ static bool flippar_write_text(File* file, const char* text) {
     return storage_file_write(file, text, len) == len;
 }
 
+static bool flippar_build_save_path(Storage* storage, char* path, size_t path_size) {
+    DateTime datetime = {0};
+    furi_hal_rtc_get_datetime(&datetime);
+
+    char base_name[64];
+    if(datetime.year > 0) {
+        snprintf(
+            base_name,
+            sizeof(base_name),
+            "%s_%u-%u-%u",
+            FLIPPAR_SAVE_BASENAME,
+            datetime.year,
+            datetime.month,
+            datetime.day);
+    } else {
+        snprintf(base_name, sizeof(base_name), "%s_unknown-date", FLIPPAR_SAVE_BASENAME);
+    }
+
+    snprintf(path, path_size, "%s/%s.txt", FLIPPAR_SAVE_DIR, base_name);
+    if(!storage_file_exists(storage, path)) {
+        return true;
+    }
+
+    for(uint8_t index = 2; index < 100; index++) {
+        snprintf(path, path_size, "%s/%s_%02u.txt", FLIPPAR_SAVE_DIR, base_name, index);
+        if(!storage_file_exists(storage, path)) {
+            return true;
+        }
+    }
+
+    path[0] = '\0';
+    return false;
+}
+
 static bool flippar_save_score_sheet(FlipParApp* app) {
     bool success = false;
     Storage* storage = furi_record_open(RECORD_STORAGE);
@@ -185,22 +220,8 @@ static bool flippar_save_score_sheet(FlipParApp* app) {
         goto cleanup;
     }
 
-    char path[96];
-    for(uint8_t index = 1; index < 100; index++) {
-        snprintf(
-            path,
-            sizeof(path),
-            "%s/%s_%02u.txt",
-            FLIPPAR_SAVE_DIR,
-            FLIPPAR_SAVE_BASENAME,
-            index);
-        if(!storage_file_exists(storage, path)) {
-            break;
-        }
-        path[0] = '\0';
-    }
-
-    if(path[0] == '\0') {
+    char path[128];
+    if(!flippar_build_save_path(storage, path, sizeof(path))) {
         goto cleanup;
     }
 
@@ -214,35 +235,35 @@ static bool flippar_save_score_sheet(FlipParApp* app) {
     snprintf(line, sizeof(line), "FlipPar by ConsultingJoe\r\n");
     if(!flippar_write_text(file, line)) goto close_file;
 
-    snprintf(line, sizeof(line), "Players: %u\r\nHoles: %u\r\n", app->players, app->holes);
+    snprintf(line, sizeof(line), "Players:\t%u\r\nHoles:\t%u\r\n", app->players, app->holes);
     if(!flippar_write_text(file, line)) goto close_file;
 
-    snprintf(line, sizeof(line), "Par Total: %d\r\n\r\n", par_total);
+    snprintf(line, sizeof(line), "Par Total:\t%d\r\n\r\n", par_total);
     if(!flippar_write_text(file, line)) goto close_file;
 
-    if(!flippar_write_text(file, "Hole,Par")) goto close_file;
+    if(!flippar_write_text(file, "Hole\tPar")) goto close_file;
     for(uint8_t p = 0; p < app->players; p++) {
-        snprintf(line, sizeof(line), ",%s", app->player_names[p]);
+        snprintf(line, sizeof(line), "\t%s", app->player_names[p]);
         if(!flippar_write_text(file, line)) goto close_file;
     }
     if(!flippar_write_text(file, "\r\n")) goto close_file;
 
     for(uint8_t h = 0; h < app->holes; h++) {
-        snprintf(line, sizeof(line), "%u,%u", h + 1, app->pars[h]);
+        snprintf(line, sizeof(line), "%u\t%u", h + 1, app->pars[h]);
         if(!flippar_write_text(file, line)) goto close_file;
 
         for(uint8_t p = 0; p < app->players; p++) {
-            snprintf(line, sizeof(line), ",%u", app->scores[p][h]);
+            snprintf(line, sizeof(line), "\t%u", app->scores[p][h]);
             if(!flippar_write_text(file, line)) goto close_file;
         }
         if(!flippar_write_text(file, "\r\n")) goto close_file;
     }
 
-    if(!flippar_write_text(file, "Total,")) goto close_file;
+    if(!flippar_write_text(file, "Total\t")) goto close_file;
     snprintf(line, sizeof(line), "%d", par_total);
     if(!flippar_write_text(file, line)) goto close_file;
     for(uint8_t p = 0; p < app->players; p++) {
-        snprintf(line, sizeof(line), ",%d", flippar_total_for_player(app, p));
+        snprintf(line, sizeof(line), "\t%d", flippar_total_for_player(app, p));
         if(!flippar_write_text(file, line)) goto close_file;
     }
     if(!flippar_write_text(file, "\r\n")) goto close_file;
