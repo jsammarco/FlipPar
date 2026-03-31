@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include "flippar_icons.h"
 
 #define FLIPPAR_MAX_PLAYERS 4
 #define FLIPPAR_MAX_HOLES 27
@@ -16,6 +17,7 @@
 #define FLIPPAR_SAVE_BASENAME "scorecard"
 
 typedef enum {
+    FlipParScreenSplash,
     FlipParScreenSetup,
     FlipParScreenGrid,
 } FlipParScreen;
@@ -33,6 +35,10 @@ typedef enum {
     FlipParViewTextInput,
 } FlipParViewId;
 
+typedef enum {
+    FlipParCustomEventSplashDone = 1,
+} FlipParCustomEvent;
+
 typedef struct {
     uint8_t dummy;
 } FlipParViewModel;
@@ -42,6 +48,7 @@ typedef struct {
     ViewDispatcher* view_dispatcher;
     View* main_view;
     TextInput* text_input;
+    FuriTimer* splash_timer;
 
     uint8_t holes;
     uint8_t players;
@@ -65,6 +72,36 @@ typedef struct {
 
 static FlipParApp* g_flippar_app = NULL;
 
+static void flippar_finish_splash(FlipParApp* app) {
+    if(!app || app->screen != FlipParScreenSplash) return;
+
+    if(app->splash_timer) {
+        furi_timer_stop(app->splash_timer);
+    }
+
+    app->screen = FlipParScreenSetup;
+    app->setup_field = FlipParFieldHoles;
+}
+
+static void flippar_splash_timer_callback(void* context) {
+    FlipParApp* app = context;
+
+    if(app && app->view_dispatcher) {
+        view_dispatcher_send_custom_event(app->view_dispatcher, FlipParCustomEventSplashDone);
+    }
+}
+
+static bool flippar_custom_event_callback(void* context, uint32_t event) {
+    FlipParApp* app = context;
+
+    if(event == FlipParCustomEventSplashDone) {
+        flippar_finish_splash(app);
+        return true;
+    }
+
+    return false;
+}
+
 static void flippar_init_data(FlipParApp* app) {
     app->holes = 18;
     app->players = 2;
@@ -82,7 +119,7 @@ static void flippar_init_data(FlipParApp* app) {
         }
     }
 
-    app->screen = FlipParScreenSetup;
+    app->screen = FlipParScreenSplash;
     app->setup_field = FlipParFieldHoles;
     app->setup_name_index = 0;
     app->selected_row = 1;
@@ -302,8 +339,13 @@ static void flippar_draw_setup(Canvas* canvas, FlipParApp* app) {
         canvas_draw_str(canvas, 2, y, line);
     }
 
-    canvas_draw_line(canvas, 2, 56, 126, 56);
+    canvas_draw_line(canvas, 2, 54, 126, 54);
     canvas_draw_str(canvas, 2, 62, "By ConsultingJoe.com");
+}
+
+static void flippar_draw_splash(Canvas* canvas) {
+    canvas_clear(canvas);
+    canvas_draw_icon(canvas, 0, 0, &I_flippar_splash_128x64);
 }
 
 static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
@@ -414,7 +456,9 @@ static void flippar_main_view_draw(Canvas* canvas, void* model) {
     FlipParApp* app = g_flippar_app;
     if(!app) return;
 
-    if(app->screen == FlipParScreenSetup) {
+    if(app->screen == FlipParScreenSplash) {
+        flippar_draw_splash(canvas);
+    } else if(app->screen == FlipParScreenSetup) {
         flippar_draw_setup(canvas, app);
     } else {
         flippar_draw_grid(canvas, app);
@@ -479,6 +523,15 @@ static bool flippar_main_view_input(InputEvent* event, void* context) {
     FlipParApp* app = context;
 
     if(!app) return false;
+
+    if(app->screen == FlipParScreenSplash) {
+        if(event->type == InputTypeShort || event->type == InputTypeRepeat ||
+           event->type == InputTypeLong) {
+            flippar_finish_splash(app);
+            return true;
+        }
+        return false;
+    }
 
     if(app->screen == FlipParScreenSetup) {
         if(event->type != InputTypeShort && event->type != InputTypeRepeat) return false;
@@ -570,8 +623,9 @@ int32_t flippar_app(void* p) {
     app->gui = furi_record_open(RECORD_GUI);
 
     app->view_dispatcher = view_dispatcher_alloc();
-    view_dispatcher_enable_queue(app->view_dispatcher);
     view_dispatcher_attach_to_gui(app->view_dispatcher, app->gui, ViewDispatcherTypeFullscreen);
+    view_dispatcher_set_custom_event_callback(app->view_dispatcher, flippar_custom_event_callback);
+    view_dispatcher_set_event_callback_context(app->view_dispatcher, app);
 
     app->main_view = view_alloc();
     view_allocate_model(app->main_view, ViewModelTypeLockFree, sizeof(FlipParViewModel));
@@ -587,11 +641,21 @@ int32_t flippar_app(void* p) {
         FlipParViewTextInput,
         text_input_get_view(app->text_input));
 
+    app->splash_timer = furi_timer_alloc(flippar_splash_timer_callback, FuriTimerTypeOnce, app);
+    if(app->splash_timer) {
+        furi_timer_start(app->splash_timer, furi_ms_to_ticks(1200));
+    }
+
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipParViewMain);
     view_dispatcher_run(app->view_dispatcher);
 
     view_dispatcher_remove_view(app->view_dispatcher, FlipParViewTextInput);
     text_input_free(app->text_input);
+
+    if(app->splash_timer) {
+        furi_timer_stop(app->splash_timer);
+        furi_timer_free(app->splash_timer);
+    }
 
     view_dispatcher_remove_view(app->view_dispatcher, FlipParViewMain);
     view_free(app->main_view);

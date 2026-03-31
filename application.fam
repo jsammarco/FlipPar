@@ -3,5 +3,7 @@ App(
     name="FlipPar",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="flippar_app",
+    fap_icon="icon.png",
+    fap_icon_assets="assets",
     stack_size=4096,
 )
