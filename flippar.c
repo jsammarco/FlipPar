@@ -1274,7 +1274,7 @@ int32_t flippar_app(void* p) {
 
     app->splash_timer = furi_timer_alloc(flippar_splash_timer_callback, FuriTimerTypeOnce, app);
     if(app->splash_timer) {
-        furi_timer_start(app->splash_timer, furi_ms_to_ticks(1200));
+        furi_timer_start(app->splash_timer, furi_ms_to_ticks(1700));
     }
 
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipParViewMain);
