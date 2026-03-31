@@ -9,6 +9,7 @@ FlipPar is a Flipper Zero external app for tracking golf or disc golf rounds on-
 - Editable player names
 - Per-hole par tracking
 - Per-player hole scores
+- Automatic current-round persistence and restore
 - Running total view with leader summary relative to par
 - Plain-text score-sheet export to the SD card
 
@@ -20,6 +21,7 @@ FlipPar is a Flipper Zero external app for tracking golf or disc golf rounds on-
 - `Left` / `Right`: change holes, players, or selected player name slot
 - `OK` on `Name`: open the text editor for that player
 - `OK` on `Start Round`: begin score entry
+- `OK` on `New Game`: clear the current scorecard after confirmation
 - `OK` on `Save Score Sheet`: export the current round
 
 ### Score grid
@@ -41,6 +43,12 @@ Files are created with a date-based name such as:
 `FlipPar_2026-3-31.txt`
 
 If a file for that date already exists, FlipPar appends a numeric suffix.
+
+The in-progress round is also auto-saved to:
+
+`/ext/apps_data/flippar/current_round.bin`
+
+That file is used to restore the current scorecard if the app is closed and reopened.
 
 ## Project Layout
 

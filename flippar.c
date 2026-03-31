@@ -16,11 +16,15 @@
 #define FLIPPAR_NAME_LEN 32
 #define FLIPPAR_SAVE_DIR "/ext/apps_data/flippar"
 #define FLIPPAR_SAVE_BASENAME "FlipPar"
+#define FLIPPAR_STATE_PATH FLIPPAR_SAVE_DIR "/current_round.bin"
+#define FLIPPAR_STATE_MAGIC 0x46504C52UL
+#define FLIPPAR_STATE_VERSION 1
 
 typedef enum {
     FlipParScreenSplash,
     FlipParScreenSetup,
     FlipParScreenGrid,
+    FlipParScreenConfirmNewGame,
 } FlipParScreen;
 
 typedef enum {
@@ -28,6 +32,7 @@ typedef enum {
     FlipParFieldPlayers,
     FlipParFieldNames,
     FlipParFieldStart,
+    FlipParFieldNewGame,
     FlipParFieldSave,
 } FlipParSetupField;
 
@@ -43,6 +48,23 @@ typedef enum {
 typedef struct {
     uint8_t dummy;
 } FlipParViewModel;
+
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint8_t holes;
+    uint8_t players;
+    char player_names[FLIPPAR_MAX_PLAYERS][FLIPPAR_NAME_LEN];
+    uint8_t pars[FLIPPAR_MAX_HOLES];
+    uint8_t scores[FLIPPAR_MAX_PLAYERS][FLIPPAR_MAX_HOLES];
+    FlipParScreen screen;
+    FlipParSetupField setup_field;
+    uint8_t setup_name_index;
+    uint8_t selected_row;
+    uint8_t selected_col;
+    uint8_t scroll_hole_offset;
+    uint8_t scroll_row_offset;
+} FlipParPersistedState;
 
 typedef struct {
     Gui* gui;
@@ -68,6 +90,7 @@ typedef struct {
 
     char text_input_buffer[FLIPPAR_NAME_LEN];
     uint8_t editing_player_index;
+    bool confirm_new_game_yes;
 
     bool running;
 } FlipParApp;
@@ -131,6 +154,30 @@ static void flippar_init_data(FlipParApp* app) {
     app->editing_player_index = 0;
     memset(app->text_input_buffer, 0, sizeof(app->text_input_buffer));
     app->running = true;
+}
+
+static void flippar_normalize_state(FlipParApp* app) {
+    if(app->players < 1) {
+        app->players = 1;
+    } else if(app->players > FLIPPAR_MAX_PLAYERS) {
+        app->players = FLIPPAR_MAX_PLAYERS;
+    }
+
+    if(app->holes < 1) {
+        app->holes = 1;
+    } else if(app->holes > FLIPPAR_MAX_HOLES) {
+        app->holes = FLIPPAR_MAX_HOLES;
+    }
+
+    if(app->setup_name_index >= app->players) {
+        app->setup_name_index = app->players - 1;
+    }
+    if(app->selected_row > app->players) {
+        app->selected_row = app->players;
+    }
+    if(app->selected_col >= app->holes) {
+        app->selected_col = app->holes - 1;
+    }
 }
 
 static int16_t flippar_total_for_player(FlipParApp* app, uint8_t player) {
@@ -221,6 +268,133 @@ static bool flippar_write_score_card_number(File* file, int16_t value, size_t wi
     char buffer[16];
     snprintf(buffer, sizeof(buffer), "%d", value);
     return flippar_write_score_card_cell(file, buffer, width, false);
+}
+
+static bool flippar_save_current_state(FlipParApp* app) {
+    bool success = false;
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* file = storage_file_alloc(storage);
+
+    if(!storage_simply_mkdir(storage, FLIPPAR_SAVE_DIR)) {
+        goto cleanup;
+    }
+
+    if(!storage_file_open(file, FLIPPAR_STATE_PATH, FSAM_WRITE, FSOM_CREATE_ALWAYS)) {
+        goto cleanup;
+    }
+
+    FlipParPersistedState state = {
+        .magic = FLIPPAR_STATE_MAGIC,
+        .version = FLIPPAR_STATE_VERSION,
+        .holes = app->holes,
+        .players = app->players,
+        .screen = app->screen == FlipParScreenConfirmNewGame ? FlipParScreenSetup : app->screen,
+        .setup_field = app->setup_field,
+        .setup_name_index = app->setup_name_index,
+        .selected_row = app->selected_row,
+        .selected_col = app->selected_col,
+        .scroll_hole_offset = app->scroll_hole_offset,
+        .scroll_row_offset = app->scroll_row_offset,
+    };
+
+    memcpy(state.player_names, app->player_names, sizeof(state.player_names));
+    memcpy(state.pars, app->pars, sizeof(state.pars));
+    memcpy(state.scores, app->scores, sizeof(state.scores));
+
+    if(storage_file_write(file, &state, sizeof(state)) != sizeof(state)) {
+        goto close_file;
+    }
+
+    if(!storage_file_sync(file)) {
+        goto close_file;
+    }
+
+    success = true;
+
+close_file:
+    storage_file_close(file);
+
+cleanup:
+    storage_file_free(file);
+    furi_record_close(RECORD_STORAGE);
+    return success;
+}
+
+static bool flippar_load_current_state(FlipParApp* app) {
+    bool success = false;
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    File* file = storage_file_alloc(storage);
+    FlipParPersistedState state;
+
+    memset(&state, 0, sizeof(state));
+
+    if(!storage_file_exists(storage, FLIPPAR_STATE_PATH)) {
+        goto cleanup;
+    }
+
+    if(!storage_file_open(file, FLIPPAR_STATE_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
+        goto cleanup;
+    }
+
+    if(storage_file_read(file, &state, sizeof(state)) != sizeof(state)) {
+        goto close_file;
+    }
+
+    if(state.magic != FLIPPAR_STATE_MAGIC || state.version != FLIPPAR_STATE_VERSION) {
+        goto close_file;
+    }
+
+    if(state.holes < 1 || state.holes > FLIPPAR_MAX_HOLES) goto close_file;
+    if(state.players < 1 || state.players > FLIPPAR_MAX_PLAYERS) goto close_file;
+    if(state.setup_field > FlipParFieldSave) goto close_file;
+    if(state.setup_name_index >= state.players) goto close_file;
+    if(state.selected_row > state.players) goto close_file;
+    if(state.selected_col >= state.holes) goto close_file;
+    if(state.scroll_hole_offset > state.holes) goto close_file;
+    if(state.scroll_row_offset > state.players) goto close_file;
+
+    app->holes = state.holes;
+    app->players = state.players;
+    memcpy(app->player_names, state.player_names, sizeof(app->player_names));
+    memcpy(app->pars, state.pars, sizeof(app->pars));
+    memcpy(app->scores, state.scores, sizeof(app->scores));
+    app->screen =
+        (state.screen == FlipParScreenGrid) ? FlipParScreenGrid : FlipParScreenSetup;
+    app->setup_field = state.setup_field;
+    app->setup_name_index = state.setup_name_index;
+    app->selected_row = state.selected_row;
+    app->selected_col = state.selected_col;
+    app->scroll_hole_offset = state.scroll_hole_offset;
+    app->scroll_row_offset = state.scroll_row_offset;
+    app->confirm_new_game_yes = false;
+    flippar_normalize_state(app);
+    success = true;
+
+close_file:
+    storage_file_close(file);
+
+cleanup:
+    storage_file_free(file);
+    furi_record_close(RECORD_STORAGE);
+    return success;
+}
+
+static void flippar_reset_scorecard(FlipParApp* app) {
+    for(uint8_t h = 0; h < FLIPPAR_MAX_HOLES; h++) {
+        app->pars[h] = 3;
+        for(uint8_t p = 0; p < FLIPPAR_MAX_PLAYERS; p++) {
+            app->scores[p][h] = 0;
+        }
+    }
+
+    app->screen = FlipParScreenSetup;
+    app->setup_field = FlipParFieldStart;
+    app->selected_row = 1;
+    app->selected_col = 0;
+    app->scroll_hole_offset = 0;
+    app->scroll_row_offset = 0;
+    app->confirm_new_game_yes = false;
+    flippar_normalize_state(app);
 }
 
 static bool flippar_build_save_path(Storage* storage, char* path, size_t path_size) {
@@ -356,6 +530,7 @@ static void flippar_adjust_selected_value(FlipParApp* app, int8_t delta) {
     if(value > 15) value = 15;
 
     *target = (uint8_t)value;
+    flippar_save_current_state(app);
 }
 
 static void flippar_draw_setup(Canvas* canvas, FlipParApp* app) {
@@ -406,6 +581,12 @@ static void flippar_draw_setup(Canvas* canvas, FlipParApp* app) {
                 sizeof(line),
                 "%c Start Round",
                 app->setup_field == field ? '>' : ' ');
+        } else if(field == FlipParFieldNewGame) {
+            snprintf(
+                line,
+                sizeof(line),
+                "%c New Game",
+                app->setup_field == field ? '>' : ' ');
         } else {
             snprintf(
                 line,
@@ -424,6 +605,21 @@ static void flippar_draw_setup(Canvas* canvas, FlipParApp* app) {
 static void flippar_draw_splash(Canvas* canvas) {
     canvas_clear(canvas);
     canvas_draw_icon(canvas, 0, 0, &I_flippar_splash_128x64);
+}
+
+static void flippar_draw_new_game_confirm(Canvas* canvas, FlipParApp* app) {
+    canvas_clear(canvas);
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 2, 12, "New Game?");
+
+    canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str(canvas, 2, 26, "Scorecard will be");
+    canvas_draw_str(canvas, 2, 36, "cleared. Continue?");
+
+    const char* yes_label = app->confirm_new_game_yes ? "> Yes <" : "  Yes  ";
+    const char* no_label = app->confirm_new_game_yes ? "  No  " : "> No <";
+    canvas_draw_str(canvas, 20, 56, yes_label);
+    canvas_draw_str(canvas, 74, 56, no_label);
 }
 
 static void flippar_draw_scroll_arrow(Canvas* canvas, uint8_t x, uint8_t y, bool up) {
@@ -576,6 +772,8 @@ static void flippar_main_view_draw(Canvas* canvas, void* model) {
         flippar_draw_splash(canvas);
     } else if(app->screen == FlipParScreenSetup) {
         flippar_draw_setup(canvas, app);
+    } else if(app->screen == FlipParScreenConfirmNewGame) {
+        flippar_draw_new_game_confirm(canvas, app);
     } else {
         flippar_draw_grid(canvas, app);
     }
@@ -586,9 +784,17 @@ static uint32_t flippar_main_view_previous(void* context) {
 
     if(app->screen == FlipParScreenGrid) {
         app->screen = FlipParScreenSetup;
+        flippar_save_current_state(app);
         return FlipParViewMain;
     }
 
+    if(app->screen == FlipParScreenConfirmNewGame) {
+        app->screen = FlipParScreenSetup;
+        app->confirm_new_game_yes = false;
+        return FlipParViewMain;
+    }
+
+    flippar_save_current_state(app);
     app->running = false;
     view_dispatcher_stop(app->view_dispatcher);
     return VIEW_NONE;
@@ -611,6 +817,7 @@ static void flippar_name_input_done(void* context) {
             app->editing_player_index + 1);
     }
 
+    flippar_save_current_state(app);
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipParViewMain);
 }
 
@@ -654,9 +861,11 @@ static bool flippar_main_view_input(InputEvent* event, void* context) {
 
         if(event->key == InputKeyUp) {
             if(app->setup_field > 0) app->setup_field--;
+            flippar_save_current_state(app);
             return true;
         } else if(event->key == InputKeyDown) {
             if(app->setup_field < FlipParFieldSave) app->setup_field++;
+            flippar_save_current_state(app);
             return true;
         } else if(event->key == InputKeyLeft) {
             if(app->setup_field == FlipParFieldHoles && app->holes > 1) {
@@ -669,6 +878,8 @@ static bool flippar_main_view_input(InputEvent* event, void* context) {
             } else if(app->setup_field == FlipParFieldNames && app->setup_name_index > 0) {
                 app->setup_name_index--;
             }
+            flippar_normalize_state(app);
+            flippar_save_current_state(app);
             return true;
         } else if(event->key == InputKeyRight) {
             if(app->setup_field == FlipParFieldHoles && app->holes < FLIPPAR_MAX_HOLES) {
@@ -680,6 +891,8 @@ static bool flippar_main_view_input(InputEvent* event, void* context) {
                 (app->setup_name_index + 1) < app->players) {
                 app->setup_name_index++;
             }
+            flippar_normalize_state(app);
+            flippar_save_current_state(app);
             return true;
         } else if(event->key == InputKeyOk) {
             if(app->setup_field == FlipParFieldNames) {
@@ -690,8 +903,34 @@ static bool flippar_main_view_input(InputEvent* event, void* context) {
                 app->selected_col = 0;
                 app->scroll_row_offset = 0;
                 app->scroll_hole_offset = 0;
+                flippar_save_current_state(app);
+            } else if(app->setup_field == FlipParFieldNewGame) {
+                app->screen = FlipParScreenConfirmNewGame;
+                app->confirm_new_game_yes = false;
             } else if(app->setup_field == FlipParFieldSave) {
                 flippar_save_score_sheet(app);
+            }
+            return true;
+        }
+    } else if(app->screen == FlipParScreenConfirmNewGame) {
+        if(event->type != InputTypeShort && event->type != InputTypeRepeat) return false;
+
+        if(event->key == InputKeyLeft || event->key == InputKeyRight) {
+            app->confirm_new_game_yes = !app->confirm_new_game_yes;
+            return true;
+        } else if(event->key == InputKeyUp) {
+            app->confirm_new_game_yes = true;
+            return true;
+        } else if(event->key == InputKeyDown) {
+            app->confirm_new_game_yes = false;
+            return true;
+        } else if(event->key == InputKeyOk) {
+            if(app->confirm_new_game_yes) {
+                flippar_reset_scorecard(app);
+                flippar_save_current_state(app);
+            } else {
+                app->screen = FlipParScreenSetup;
+                app->confirm_new_game_yes = false;
             }
             return true;
         }
@@ -737,6 +976,7 @@ int32_t flippar_app(void* p) {
 
     g_flippar_app = app;
     flippar_init_data(app);
+    flippar_load_current_state(app);
 
     app->gui = furi_record_open(RECORD_GUI);
 
@@ -766,6 +1006,8 @@ int32_t flippar_app(void* p) {
 
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipParViewMain);
     view_dispatcher_run(app->view_dispatcher);
+
+    flippar_save_current_state(app);
 
     view_dispatcher_remove_view(app->view_dispatcher, FlipParViewTextInput);
     text_input_free(app->text_input);
