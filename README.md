@@ -2,6 +2,10 @@
 
 FlipPar is a Flipper Zero external app for tracking golf or disc golf rounds on-device. It lets you set the number of holes and players, rename players, record par and score values hole-by-hole, and export a plain-text score sheet to the SD card.
 
+| Release Download |
+| --- |
+| **Ready to install on your Flipper?** Download the packaged `.fap` build from the latest release: **[FlipPar Main Release](https://github.com/jsammarco/FlipPar/releases/tag/Main)** |
+
 ## Features
 
 - Supports 1 to 27 holes
