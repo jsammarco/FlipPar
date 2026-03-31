@@ -66,6 +66,31 @@ This repository contains a standard Flipper Zero external app layout:
 
 To build it, place this project in your Flipper Zero firmware external-apps workflow and compile it with your preferred Flipper build toolchain. If you already build external `.fap` apps, this project is ready to drop into that process as-is.
 
+This repo also includes a helper script, `build.ps1`, that mirrors this project into your firmware tree and runs `fbt`.
+
+Default usage:
+
+```powershell
+.\build.ps1
+```
+
+Preview the sync without copying, deleting, or building:
+
+```powershell
+.\build.ps1 -PreviewSync
+```
+
+Override the source or target directories explicitly:
+
+```powershell
+.\build.ps1 `
+  -SourceDir C:\Users\Joe\Projects\FlipPar `
+  -FirmwareDir C:\Users\Joe\Projects\flipperzero-firmware `
+  -TargetDir C:\Users\Joe\Projects\flipperzero-firmware\applications_user\flippar
+```
+
+The script prints the resolved `SourceDir`, `FirmwareDir`, `TargetDir`, and `AppSrc` before syncing. It also refuses to mirror if the target is the same as the source or if the target is outside the selected firmware directory.
+
 If you copy this app into `applications_user/flippar`, copy the whole folder contents except `.git` and `README.md`. The required image files are:
 
 - `icon.png` at the app root
