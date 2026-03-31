@@ -15,20 +15,20 @@ FlipPar is a Flipper Zero external app for tracking golf or disc golf rounds on-
 
 ## Screenshots
 
-| Setup | Grid |
+| Splash | Setup 1 |
 | --- | --- |
-| ![Main setup view](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Main%20View%20No%20Grid.png) | ![Score grid view](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Grid%20View.png) |
-| Main setup screen for round configuration and player editing. | Hole-by-hole score entry with par and player rows. |
+| ![Loading screen](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Loading%20Screen.png) | ![First setup screen](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Menu1.png) |
+| Startup splash while the app initializes. | First setup screen with round options and quick actions. |
 
-| Menu 1 | Menu 2 |
+| Setup 2 | Main |
 | --- | --- |
-| ![First menu view](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Menu1.png) | ![Second menu view](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Menu2.png) |
-| Quick actions from the setup screen. | Additional round actions and export options. |
+| ![Second setup screen](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Menu2.png) | ![Main view without grid](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Main%20View%20No%20Grid.png) |
+| Second setup screen with additional round actions and export options. | Main round view before switching to the full score grid. |
 
-| Loading | Totals |
+| Grid | Totals |
 | --- | --- |
-| ![Loading screen](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Loading%20Screen.png) | ![Totals view](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Totals.png) |
-| Startup splash while the app initializes. | Running totals with the leaderboard relative to par. |
+| ![Score grid view](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Grid%20View.png) | ![Totals view](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Totals.png) |
+| Hole-by-hole score entry with par and player rows. | Running totals with the leaderboard relative to par. |
 
 ## Controls
 
