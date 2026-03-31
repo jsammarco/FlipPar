@@ -11,14 +11,18 @@
 #include <stdio.h>
 #include "flippar_icons.h"
 
-#define FLIPPAR_MAX_PLAYERS 4
+#define FLIPPAR_MAX_PLAYERS 10
 #define FLIPPAR_MAX_HOLES 27
 #define FLIPPAR_NAME_LEN 32
 #define FLIPPAR_SAVE_DIR "/ext/apps_data/flippar"
 #define FLIPPAR_SAVE_BASENAME "FlipPar"
 #define FLIPPAR_STATE_PATH FLIPPAR_SAVE_DIR "/current_round.bin"
 #define FLIPPAR_STATE_MAGIC 0x46504C52UL
-#define FLIPPAR_STATE_VERSION 1
+#define FLIPPAR_STATE_VERSION 2
+#define FLIPPAR_MAX_STROKES 99
+#define FLIPPAR_SCORE_CARD_HOLE_WIDTH 4
+#define FLIPPAR_SCORE_CARD_PAR_WIDTH 3
+#define FLIPPAR_SCORE_CARD_PLAYER_WIDTH 10
 
 typedef enum {
     FlipParScreenSplash,
@@ -132,10 +136,9 @@ static void flippar_init_data(FlipParApp* app) {
     app->players = 2;
 
     memset(app->player_names, 0, sizeof(app->player_names));
-    snprintf(app->player_names[0], FLIPPAR_NAME_LEN, "P1");
-    snprintf(app->player_names[1], FLIPPAR_NAME_LEN, "P2");
-    snprintf(app->player_names[2], FLIPPAR_NAME_LEN, "P3");
-    snprintf(app->player_names[3], FLIPPAR_NAME_LEN, "P4");
+    for(uint8_t p = 0; p < FLIPPAR_MAX_PLAYERS; p++) {
+        snprintf(app->player_names[p], FLIPPAR_NAME_LEN, "P%u", p + 1);
+    }
 
     for(uint8_t h = 0; h < FLIPPAR_MAX_HOLES; h++) {
         app->pars[h] = 3;
@@ -239,11 +242,14 @@ static bool flippar_write_char_repeat(File* file, char ch, size_t count) {
 }
 
 static bool flippar_write_score_card_separator(File* file, uint8_t players) {
-    static const uint8_t column_widths[] = {4, 3, 10, 10, 10, 10};
-
     if(!flippar_write_text(file, "+")) return false;
-    for(uint8_t column = 0; column < players + 2; column++) {
-        if(!flippar_write_char_repeat(file, '-', column_widths[column] + 2)) return false;
+    if(!flippar_write_char_repeat(file, '-', FLIPPAR_SCORE_CARD_HOLE_WIDTH + 2)) return false;
+    if(!flippar_write_text(file, "+")) return false;
+    if(!flippar_write_char_repeat(file, '-', FLIPPAR_SCORE_CARD_PAR_WIDTH + 2)) return false;
+    if(!flippar_write_text(file, "+")) return false;
+    for(uint8_t column = 0; column < players; column++) {
+        UNUSED(column);
+        if(!flippar_write_char_repeat(file, '-', FLIPPAR_SCORE_CARD_PLAYER_WIDTH + 2)) return false;
         if(!flippar_write_text(file, "+")) return false;
     }
 
@@ -435,7 +441,6 @@ static bool flippar_save_score_sheet(FlipParApp* app) {
     bool success = false;
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);
-    static const uint8_t column_widths[] = {4, 3, 10, 10, 10, 10};
 
     if(!storage_simply_mkdir(storage, FLIPPAR_SAVE_DIR)) {
         goto cleanup;
@@ -464,10 +469,15 @@ static bool flippar_save_score_sheet(FlipParApp* app) {
 
     if(!flippar_write_score_card_separator(file, app->players)) goto close_file;
     if(!flippar_write_text(file, "|")) goto close_file;
-    if(!flippar_write_score_card_cell(file, "Hole", column_widths[0], true)) goto close_file;
-    if(!flippar_write_score_card_cell(file, "Par", column_widths[1], true)) goto close_file;
+    if(!flippar_write_score_card_cell(file, "Hole", FLIPPAR_SCORE_CARD_HOLE_WIDTH, true)) {
+        goto close_file;
+    }
+    if(!flippar_write_score_card_cell(file, "Par", FLIPPAR_SCORE_CARD_PAR_WIDTH, true)) {
+        goto close_file;
+    }
     for(uint8_t p = 0; p < app->players; p++) {
-        if(!flippar_write_score_card_cell(file, app->player_names[p], column_widths[p + 2], true)) {
+        if(!flippar_write_score_card_cell(
+               file, app->player_names[p], FLIPPAR_SCORE_CARD_PLAYER_WIDTH, true)) {
             goto close_file;
         }
     }
@@ -476,10 +486,15 @@ static bool flippar_save_score_sheet(FlipParApp* app) {
 
     for(uint8_t h = 0; h < app->holes; h++) {
         if(!flippar_write_text(file, "|")) goto close_file;
-        if(!flippar_write_score_card_number(file, h + 1, column_widths[0])) goto close_file;
-        if(!flippar_write_score_card_number(file, app->pars[h], column_widths[1])) goto close_file;
+        if(!flippar_write_score_card_number(file, h + 1, FLIPPAR_SCORE_CARD_HOLE_WIDTH)) {
+            goto close_file;
+        }
+        if(!flippar_write_score_card_number(file, app->pars[h], FLIPPAR_SCORE_CARD_PAR_WIDTH)) {
+            goto close_file;
+        }
         for(uint8_t p = 0; p < app->players; p++) {
-            if(!flippar_write_score_card_number(file, app->scores[p][h], column_widths[p + 2])) {
+            if(!flippar_write_score_card_number(
+                   file, app->scores[p][h], FLIPPAR_SCORE_CARD_PLAYER_WIDTH)) {
                 goto close_file;
             }
         }
@@ -488,11 +503,15 @@ static bool flippar_save_score_sheet(FlipParApp* app) {
     }
 
     if(!flippar_write_text(file, "|")) goto close_file;
-    if(!flippar_write_score_card_cell(file, "Total", column_widths[0], true)) goto close_file;
-    if(!flippar_write_score_card_number(file, par_total, column_widths[1])) goto close_file;
+    if(!flippar_write_score_card_cell(file, "Total", FLIPPAR_SCORE_CARD_HOLE_WIDTH, true)) {
+        goto close_file;
+    }
+    if(!flippar_write_score_card_number(file, par_total, FLIPPAR_SCORE_CARD_PAR_WIDTH)) {
+        goto close_file;
+    }
     for(uint8_t p = 0; p < app->players; p++) {
         if(!flippar_write_score_card_number(
-               file, flippar_total_for_player(app, p), column_widths[p + 2])) {
+               file, flippar_total_for_player(app, p), FLIPPAR_SCORE_CARD_PLAYER_WIDTH)) {
             goto close_file;
         }
     }
@@ -527,7 +546,7 @@ static void flippar_adjust_selected_value(FlipParApp* app, int8_t delta) {
     value += delta;
 
     if(value < 0) value = 0;
-    if(value > 15) value = 15;
+    if(value > FLIPPAR_MAX_STROKES) value = FLIPPAR_MAX_STROKES;
 
     *target = (uint8_t)value;
     flippar_save_current_state(app);

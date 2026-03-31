@@ -5,7 +5,7 @@ FlipPar is a Flipper Zero external app for tracking golf or disc golf rounds on-
 ## Features
 
 - Supports 1 to 27 holes
-- Supports 1 to 4 players
+- Supports 1 to 10 players
 - Editable player names
 - Per-hole par tracking
 - Per-player hole scores
@@ -76,8 +76,8 @@ After building:
 ## Notes
 
 - Default round setup is 18 holes and 2 players.
-- Default player names are `P1` through `P4`.
-- Par and score values are clamped between `0` and `15`.
+- Default player names are `P1` through `P10`.
+- Par and score values are clamped between `0` and `99`.
 
 ## Author
 
