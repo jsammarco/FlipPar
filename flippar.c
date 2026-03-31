@@ -29,6 +29,7 @@ typedef enum {
     FlipParScreenSetup,
     FlipParScreenGrid,
     FlipParScreenConfirmNewGame,
+    FlipParScreenSaveResult,
 } FlipParScreen;
 
 typedef enum {
@@ -95,6 +96,8 @@ typedef struct {
     char text_input_buffer[FLIPPAR_NAME_LEN];
     uint8_t editing_player_index;
     bool confirm_new_game_yes;
+    bool last_save_success;
+    char last_save_filename[48];
 
     bool running;
 } FlipParApp;
@@ -110,6 +113,19 @@ static void flippar_finish_splash(FlipParApp* app) {
 
     app->screen = FlipParScreenSetup;
     app->setup_field = FlipParFieldHoles;
+}
+
+static void flippar_set_save_result(FlipParApp* app, bool success, const char* path) {
+    app->last_save_success = success;
+    memset(app->last_save_filename, 0, sizeof(app->last_save_filename));
+
+    if(path) {
+        const char* filename = strrchr(path, '/');
+        filename = filename ? filename + 1 : path;
+        strncpy(app->last_save_filename, filename, sizeof(app->last_save_filename) - 1);
+    }
+
+    app->screen = FlipParScreenSaveResult;
 }
 
 static void flippar_splash_timer_callback(void* context) {
@@ -156,6 +172,8 @@ static void flippar_init_data(FlipParApp* app) {
     app->scroll_row_offset = 0;
     app->editing_player_index = 0;
     memset(app->text_input_buffer, 0, sizeof(app->text_input_buffer));
+    memset(app->last_save_filename, 0, sizeof(app->last_save_filename));
+    app->last_save_success = false;
     app->running = true;
 }
 
@@ -412,11 +430,14 @@ static bool flippar_build_save_path(Storage* storage, char* path, size_t path_si
         snprintf(
             base_name,
             sizeof(base_name),
-            "%s_%u-%u-%u",
+            "%s_%u-%u-%u_%02u-%02u-%02u",
             FLIPPAR_SAVE_BASENAME,
             datetime.year,
             datetime.month,
-            datetime.day);
+            datetime.day,
+            datetime.hour,
+            datetime.minute,
+            datetime.second);
     } else {
         snprintf(base_name, sizeof(base_name), "%s_unknown-date", FLIPPAR_SAVE_BASENAME);
     }
@@ -441,12 +462,12 @@ static bool flippar_save_score_sheet(FlipParApp* app) {
     bool success = false;
     Storage* storage = furi_record_open(RECORD_STORAGE);
     File* file = storage_file_alloc(storage);
+    char path[128] = {0};
 
     if(!storage_simply_mkdir(storage, FLIPPAR_SAVE_DIR)) {
         goto cleanup;
     }
 
-    char path[128];
     if(!flippar_build_save_path(storage, path, sizeof(path))) {
         goto cleanup;
     }
@@ -527,6 +548,7 @@ close_file:
 cleanup:
     storage_file_free(file);
     furi_record_close(RECORD_STORAGE);
+    flippar_set_save_result(app, success, success ? path : NULL);
     return success;
 }
 
@@ -639,6 +661,38 @@ static void flippar_draw_new_game_confirm(Canvas* canvas, FlipParApp* app) {
     const char* no_label = app->confirm_new_game_yes ? "  No  " : "> No <";
     canvas_draw_str(canvas, 20, 56, yes_label);
     canvas_draw_str(canvas, 74, 56, no_label);
+}
+
+static void flippar_draw_save_result(Canvas* canvas, FlipParApp* app) {
+    canvas_clear(canvas);
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 2, 12, app->last_save_success ? "Scorecard Saved" : "Save Failed");
+
+    canvas_set_font(canvas, FontSecondary);
+    if(app->last_save_success) {
+        char first_line[21] = {0};
+        char second_line[21] = {0};
+        size_t filename_len = strlen(app->last_save_filename);
+
+        strncpy(first_line, app->last_save_filename, sizeof(first_line) - 1);
+        if(filename_len > sizeof(first_line) - 1) {
+            strncpy(
+                second_line,
+                app->last_save_filename + (sizeof(first_line) - 1),
+                sizeof(second_line) - 1);
+        }
+
+        canvas_draw_str(canvas, 2, 28, "Saved as:");
+        canvas_draw_str(canvas, 2, 40, first_line);
+        if(second_line[0] != '\0') {
+            canvas_draw_str(canvas, 2, 50, second_line);
+        }
+    } else {
+        canvas_draw_str(canvas, 2, 28, "Unable to write the");
+        canvas_draw_str(canvas, 2, 40, "scorecard file.");
+    }
+
+    canvas_draw_str(canvas, 2, 62, "Press any key");
 }
 
 static void flippar_draw_scroll_arrow(Canvas* canvas, uint8_t x, uint8_t y, bool up) {
@@ -793,6 +847,8 @@ static void flippar_main_view_draw(Canvas* canvas, void* model) {
         flippar_draw_setup(canvas, app);
     } else if(app->screen == FlipParScreenConfirmNewGame) {
         flippar_draw_new_game_confirm(canvas, app);
+    } else if(app->screen == FlipParScreenSaveResult) {
+        flippar_draw_save_result(canvas, app);
     } else {
         flippar_draw_grid(canvas, app);
     }
@@ -810,6 +866,11 @@ static uint32_t flippar_main_view_previous(void* context) {
     if(app->screen == FlipParScreenConfirmNewGame) {
         app->screen = FlipParScreenSetup;
         app->confirm_new_game_yes = false;
+        return FlipParViewMain;
+    }
+
+    if(app->screen == FlipParScreenSaveResult) {
+        app->screen = FlipParScreenSetup;
         return FlipParViewMain;
     }
 
@@ -870,6 +931,15 @@ static bool flippar_main_view_input(InputEvent* event, void* context) {
         if(event->type == InputTypeShort || event->type == InputTypeRepeat ||
            event->type == InputTypeLong) {
             flippar_finish_splash(app);
+            return true;
+        }
+        return false;
+    }
+
+    if(app->screen == FlipParScreenSaveResult) {
+        if(event->type == InputTypeShort || event->type == InputTypeRepeat ||
+           event->type == InputTypeLong) {
+            app->screen = FlipParScreenSetup;
             return true;
         }
         return false;

@@ -38,11 +38,11 @@ Exported score sheets are written to:
 
 `/ext/apps_data/flippar`
 
-Files are created with a date-based name such as:
+Files are created with a date-and-time-based name such as:
 
-`FlipPar_2026-3-31.txt`
+`FlipPar_2026-3-31_14-05-09.txt`
 
-If a file for that date already exists, FlipPar appends a numeric suffix.
+If a file for that exact timestamp already exists, FlipPar appends a numeric suffix.
 
 The in-progress round is also auto-saved to:
 
