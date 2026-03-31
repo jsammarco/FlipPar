@@ -13,6 +13,23 @@ FlipPar is a Flipper Zero external app for tracking golf or disc golf rounds on-
 - Running total view with leader summary relative to par
 - Plain-text score-sheet export to the SD card
 
+## Screenshots
+
+| Setup | Grid |
+| --- | --- |
+| ![Main setup view](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Main%20View%20No%20Grid.png) | ![Score grid view](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Grid%20View.png) |
+| Main setup screen for round configuration and player editing. | Hole-by-hole score entry with par and player rows. |
+
+| Menu 1 | Menu 2 |
+| --- | --- |
+| ![First menu view](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Menu1.png) | ![Second menu view](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Menu2.png) |
+| Quick actions from the setup screen. | Additional round actions and export options. |
+
+| Loading | Totals |
+| --- | --- |
+| ![Loading screen](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Loading%20Screen.png) | ![Totals view](https://raw.githubusercontent.com/jsammarco/FlipPar/refs/heads/main/Screenshots/Totals.png) |
+| Startup splash while the app initializes. | Running totals with the leaderboard relative to par. |
+
 ## Controls
 
 ### Setup screen
