@@ -54,8 +54,8 @@ That file is used to restore the current scorecard if the app is closed and reop
 
 - `flippar.c` - main application source
 - `application.fam` - Flipper Zero app manifest
-- `icon.png` - app icon
-- `assets/` - bundled image assets, including the splash screen
+- `icon.png` - Flipper package icon; must be `10x10`
+- `assets/splash_128x64.png` - bundled splash image shown at startup
 
 ## Building
 
@@ -65,6 +65,11 @@ This repository contains a standard Flipper Zero external app layout:
 - `flippar.c` contains the app implementation
 
 To build it, place this project in your Flipper Zero firmware external-apps workflow and compile it with your preferred Flipper build toolchain. If you already build external `.fap` apps, this project is ready to drop into that process as-is.
+
+If you copy this app into `applications_user/flippar`, copy the whole folder contents except `.git` and `README.md`. The required image files are:
+
+- `icon.png` at the app root
+- `assets/splash_128x64.png` in the assets folder
 
 ## Installing
 

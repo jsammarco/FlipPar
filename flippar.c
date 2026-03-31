@@ -124,6 +124,7 @@ typedef struct {
     bool last_save_success;
     char last_save_filename[48];
     bool show_grid_lines;
+    FlipParScreen splash_target_screen;
 
     bool running;
 } FlipParApp;
@@ -137,8 +138,7 @@ static void flippar_finish_splash(FlipParApp* app) {
         furi_timer_stop(app->splash_timer);
     }
 
-    app->screen = FlipParScreenSetup;
-    app->setup_field = FlipParFieldHoles;
+    app->screen = app->splash_target_screen;
 }
 
 static void flippar_set_save_result(FlipParApp* app, bool success, const char* path) {
@@ -201,6 +201,7 @@ static void flippar_init_data(FlipParApp* app) {
     memset(app->last_save_filename, 0, sizeof(app->last_save_filename));
     app->last_save_success = false;
     app->show_grid_lines = false;
+    app->splash_target_screen = FlipParScreenSetup;
     app->running = true;
 }
 
@@ -347,12 +348,16 @@ static bool flippar_save_current_state(FlipParApp* app) {
         goto cleanup;
     }
 
+    FlipParScreen persisted_screen =
+        (app->screen == FlipParScreenSplash) ? app->splash_target_screen : app->screen;
+
     FlipParPersistedStateV3 state = {
         .magic = FLIPPAR_STATE_MAGIC,
         .version = FLIPPAR_STATE_VERSION,
         .holes = app->holes,
         .players = app->players,
-        .screen = app->screen == FlipParScreenConfirmNewGame ? FlipParScreenSetup : app->screen,
+        .screen = persisted_screen == FlipParScreenConfirmNewGame ? FlipParScreenSetup :
+                                                                   persisted_screen,
         .setup_field = app->setup_field,
         .setup_name_index = app->setup_name_index,
         .selected_row = app->selected_row,
@@ -438,7 +443,7 @@ static bool flippar_load_current_state(FlipParApp* app) {
         memcpy(app->player_names, state_v2.player_names, sizeof(app->player_names));
         memcpy(app->pars, state_v2.pars, sizeof(app->pars));
         memcpy(app->scores, state_v2.scores, sizeof(app->scores));
-        app->screen =
+        app->splash_target_screen =
             (state_v2.screen == FlipParScreenGrid) ? FlipParScreenGrid : FlipParScreenSetup;
         app->setup_field =
             (state_v2.setup_field == (FlipParFieldNewGame + 1)) ? FlipParFieldSave :
@@ -468,7 +473,7 @@ static bool flippar_load_current_state(FlipParApp* app) {
         memcpy(app->player_names, state_v3.player_names, sizeof(app->player_names));
         memcpy(app->pars, state_v3.pars, sizeof(app->pars));
         memcpy(app->scores, state_v3.scores, sizeof(app->scores));
-        app->screen =
+        app->splash_target_screen =
             (state_v3.screen == FlipParScreenGrid) ? FlipParScreenGrid : FlipParScreenSetup;
         app->setup_field = state_v3.setup_field;
         app->setup_name_index = state_v3.setup_name_index;
@@ -781,7 +786,7 @@ static void flippar_draw_setup(Canvas* canvas, FlipParApp* app) {
 
 static void flippar_draw_splash(Canvas* canvas) {
     canvas_clear(canvas);
-    canvas_draw_icon(canvas, 0, 0, &I_flippar_splash_128x64);
+    canvas_draw_icon(canvas, 0, 0, &I_splash_128x64);
 }
 
 static void flippar_draw_new_game_confirm(Canvas* canvas, FlipParApp* app) {
