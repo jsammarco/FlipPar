@@ -455,7 +455,7 @@ static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
         memset(short_name, 0, sizeof(short_name));
         strncpy(short_name, app->player_names[winner], sizeof(short_name) - 1);
         flippar_format_relative_score(winner_score, par_total, relative_score, sizeof(relative_score));
-        snprintf(summary, sizeof(summary), "%s %s", short_name, relative_score);
+        snprintf(summary, sizeof(summary), "%s  %s", short_name, relative_score);
         canvas_draw_str(canvas, 78, 10, summary);
     }
 
