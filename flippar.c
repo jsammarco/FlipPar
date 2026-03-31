@@ -23,7 +23,6 @@ typedef enum {
 typedef enum {
     FlipParFieldHoles,
     FlipParFieldPlayers,
-    FlipParFieldPars,
     FlipParFieldNames,
     FlipParFieldStart,
     FlipParFieldSave,
@@ -253,7 +252,7 @@ static void flippar_draw_setup(Canvas* canvas, FlipParApp* app) {
 
     char line[64];
 
-    const uint8_t visible_items = 4;
+    const uint8_t visible_items = 5;
     uint8_t scroll_offset = 0;
     if(app->setup_field >= visible_items) {
         scroll_offset = app->setup_field - visible_items + 1;
@@ -263,7 +262,7 @@ static void flippar_draw_setup(Canvas* canvas, FlipParApp* app) {
         uint8_t field = scroll_offset + i;
         if(field > FlipParFieldSave) break;
 
-        uint8_t y = 18 + (i * 10);
+        uint8_t y = 18 + (i * 8);
         if(field == FlipParFieldHoles) {
             snprintf(
                 line,
@@ -278,12 +277,6 @@ static void flippar_draw_setup(Canvas* canvas, FlipParApp* app) {
                 "%c Players: %u",
                 app->setup_field == field ? '>' : ' ',
                 app->players);
-        } else if(field == FlipParFieldPars) {
-            snprintf(
-                line,
-                sizeof(line),
-                "%c Edit Pars in Grid",
-                app->setup_field == field ? '>' : ' ');
         } else if(field == FlipParFieldNames) {
             snprintf(
                 line,
@@ -309,8 +302,8 @@ static void flippar_draw_setup(Canvas* canvas, FlipParApp* app) {
         canvas_draw_str(canvas, 2, y, line);
     }
 
-    canvas_draw_line(canvas, 2, 58, 126, 58);
-    canvas_draw_str(canvas, 2, 66, "By ConsultingJoe.com");
+    canvas_draw_line(canvas, 2, 56, 126, 56);
+    canvas_draw_str(canvas, 2, 62, "By ConsultingJoe.com");
 }
 
 static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
@@ -522,10 +515,6 @@ static bool flippar_main_view_input(InputEvent* event, void* context) {
         } else if(event->key == InputKeyOk) {
             if(app->setup_field == FlipParFieldNames) {
                 flippar_open_name_editor(app, app->setup_name_index);
-            } else if(app->setup_field == FlipParFieldPars) {
-                app->screen = FlipParScreenGrid;
-                app->selected_row = 0;
-                app->selected_col = 0;
             } else if(app->setup_field == FlipParFieldStart) {
                 app->screen = FlipParScreenGrid;
                 app->selected_row = 1;
