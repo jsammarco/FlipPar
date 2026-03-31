@@ -14,6 +14,7 @@
 #define FLIPPAR_MAX_PLAYERS 10
 #define FLIPPAR_MAX_HOLES 27
 #define FLIPPAR_NAME_LEN 32
+#define FLIPPAR_PLAYER_NAME_DISPLAY_LEN 6
 #define FLIPPAR_SAVE_DIR "/ext/apps_data/flippar"
 #define FLIPPAR_SAVE_BASENAME "FlipPar"
 #define FLIPPAR_STATE_PATH FLIPPAR_SAVE_DIR "/current_round.bin"
@@ -23,6 +24,11 @@
 #define FLIPPAR_SCORE_CARD_HOLE_WIDTH 4
 #define FLIPPAR_SCORE_CARD_PAR_WIDTH 3
 #define FLIPPAR_SCORE_CARD_PLAYER_WIDTH 10
+#define FLIPPAR_GRID_NAME_CHAR_WIDTH 6
+#define FLIPPAR_GRID_NAME_COL_PADDING 4
+#define FLIPPAR_GRID_MAX_NAME_CHARS FLIPPAR_PLAYER_NAME_DISPLAY_LEN
+#define FLIPPAR_GRID_SCORE_CELL_WIDTH 16
+#define FLIPPAR_GRID_SCORE_COL_STEP 19
 
 typedef enum {
     FlipParScreenSplash,
@@ -240,6 +246,19 @@ static uint8_t flippar_find_winner(FlipParApp* app) {
     }
 
     return winner;
+}
+
+static uint8_t flippar_longest_player_name_length(FlipParApp* app) {
+    uint8_t longest = strlen("Par");
+
+    for(uint8_t p = 0; p < app->players; p++) {
+        uint8_t length = strlen(app->player_names[p]);
+        if(length > longest) {
+            longest = length;
+        }
+    }
+
+    return longest;
 }
 
 static bool flippar_write_text(File* file, const char* text) {
@@ -728,13 +747,31 @@ static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
         canvas_draw_str(canvas, 78, 10, summary);
     }
 
-    const uint8_t visible_cols = 4;
+    const uint8_t grid_right_x = 120;
     const uint8_t visible_rows = 4;
     const uint8_t total_col = app->holes;
     const uint8_t total_columns = app->holes + 1;
     const uint8_t total_rows = app->players + 1;
+    const uint8_t longest_name_len = flippar_longest_player_name_length(app);
+    const uint8_t capped_name_len =
+        (longest_name_len > FLIPPAR_GRID_MAX_NAME_CHARS) ? FLIPPAR_GRID_MAX_NAME_CHARS :
+                                                           longest_name_len;
     uint8_t max_scroll_offset = 0;
     uint8_t max_row_scroll_offset = 0;
+
+    const uint8_t start_x = 2;
+    const uint8_t start_y = 14;
+    const uint8_t col_w = FLIPPAR_GRID_SCORE_COL_STEP;
+    const uint8_t row_h = 9;
+    const uint8_t name_col_w =
+        (capped_name_len * FLIPPAR_GRID_NAME_CHAR_WIDTH) + FLIPPAR_GRID_NAME_COL_PADDING;
+    uint8_t visible_cols = 1;
+    const uint8_t score_area_x = start_x + name_col_w;
+    if(grid_right_x > (score_area_x + FLIPPAR_GRID_SCORE_CELL_WIDTH)) {
+        visible_cols =
+            1 + ((grid_right_x - (score_area_x + FLIPPAR_GRID_SCORE_CELL_WIDTH)) / col_w);
+    }
+
     if(total_columns > visible_cols) {
         max_scroll_offset = total_columns - visible_cols;
     }
@@ -765,11 +802,6 @@ static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
         app->scroll_row_offset = max_row_scroll_offset;
     }
 
-    const uint8_t start_x = 2;
-    const uint8_t start_y = 14;
-    const uint8_t col_w = 24;
-    const uint8_t row_h = 9;
-
     char par_total_label[8];
     snprintf(par_total_label, sizeof(par_total_label), "%d", par_total);
     canvas_draw_str(canvas, start_x, start_y + 8, par_total_label);
@@ -784,7 +816,7 @@ static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
         } else {
             snprintf(header_label, sizeof(header_label), "H%u", col + 1);
         }
-        canvas_draw_str(canvas, start_x + 22 + (i * col_w), start_y + 8, header_label);
+        canvas_draw_str(canvas, start_x + name_col_w + (i * col_w), start_y + 8, header_label);
     }
 
     for(uint8_t i = 0; i < visible_rows; i++) {
@@ -796,7 +828,7 @@ static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
         if(row == 0) {
             canvas_draw_str(canvas, start_x, y + 8, "Par");
         } else {
-            char short_name[7];
+            char short_name[FLIPPAR_GRID_MAX_NAME_CHARS + 1];
             memset(short_name, 0, sizeof(short_name));
             strncpy(short_name, app->player_names[row - 1], sizeof(short_name) - 1);
             canvas_draw_str(canvas, start_x, y + 8, short_name);
@@ -806,7 +838,7 @@ static void flippar_draw_grid(Canvas* canvas, FlipParApp* app) {
             uint8_t col = app->scroll_hole_offset + i;
             if(col >= total_columns) break;
 
-            uint8_t x = start_x + 22 + (i * col_w);
+            uint8_t x = start_x + name_col_w + (i * col_w);
 
             char value[8];
             if(col == total_col) {
@@ -886,8 +918,8 @@ static void flippar_name_input_done(void* context) {
     strncpy(
         app->player_names[app->editing_player_index],
         app->text_input_buffer,
-        FLIPPAR_NAME_LEN - 1);
-    app->player_names[app->editing_player_index][FLIPPAR_NAME_LEN - 1] = '\0';
+        FLIPPAR_PLAYER_NAME_DISPLAY_LEN);
+    app->player_names[app->editing_player_index][FLIPPAR_PLAYER_NAME_DISPLAY_LEN] = '\0';
 
     if(app->player_names[app->editing_player_index][0] == '\0') {
         snprintf(
@@ -916,7 +948,7 @@ static void flippar_open_name_editor(FlipParApp* app, uint8_t player_index) {
         flippar_name_input_done,
         app,
         app->text_input_buffer,
-        FLIPPAR_NAME_LEN,
+        FLIPPAR_PLAYER_NAME_DISPLAY_LEN + 1,
         true);
 
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipParViewTextInput);
