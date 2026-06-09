@@ -2,7 +2,7 @@ sourcecode:
   type: git
   location:
     origin: https://github.com/jsammarco/FlipPar.git
-    commit_sha: ee0f8f0393a42325cb5dbc4fb0874164587ec5e2
+    commit_sha: 2c075c706a0bc7f79242a0a26e16586f2015dcb1
 
 short_description: Track golf and disc golf rounds on Flipper Zero.
 description: "@README.md"
